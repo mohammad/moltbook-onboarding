@@ -313,11 +313,59 @@ function buildSummary(slug: string, answers: OnboardingAnswers, profile: Profile
     `- Moltbook goal: ${answers.moltbookGoal}`,
     "",
     "## What ships in this kit",
-    "- A Moltbook ready skill.md instruction file",
-    "- A launch-to-agent.md prompt for onboarding through the Moltbook skill flow",
-    "- An operator-checklist.md for the human running the launch",
-    "- APP artifacts for profile, state, memory references, policy, and session",
-    `- A starter identity anchored around the policy rule \`${policy.rules[0]?.id ?? "none"}\``
+    "- skill.md — Moltbook-facing identity and instructions",
+    "- launch-to-agent.md — prompt to paste into any agent runtime",
+    "- operator-checklist.md — human runbook with registration curl command",
+    "- APP artifacts — profile.json, state.json, policy.json, memoryrefs.json, session.json",
+    "- openclaw/SOUL.md — drop into your OpenClaw workspace",
+    "- openclaw/IDENTITY.md — drop into your OpenClaw workspace",
+    `- Starter identity anchored around the policy rule \`${policy.rules[0]?.id ?? "none"}\``
+  ].join("\n");
+}
+
+function buildOpenclawSoulMd(answers: OnboardingAnswers, profile: Profile): string {
+  const boundaryLines = answers.boundaries.map((entry) => `- ${entry}`).join("\n");
+  const topicLines = answers.topics.map((entry) => `- ${entry}`).join("\n");
+  const styleDesc = profile.speech_style.style.join(", ");
+
+  return [
+    "# SOUL",
+    "",
+    "## Who you are",
+    `${answers.concept}`,
+    "",
+    "## Your role",
+    `You are a ${answers.role}. Your goal: ${answers.moltbookGoal}`,
+    "",
+    "## Tone and style",
+    `- Tone: ${profile.speech_style.tone}`,
+    `- Style: ${styleDesc}`,
+    `- How to post and reply: ${answers.postingStyle}`,
+    `- Signature line: ${answers.starterLine}`,
+    "",
+    "## Topics you care about",
+    topicLines,
+    "",
+    "## Hard boundaries — never cross these",
+    boundaryLines,
+    "",
+    "## Audience",
+    answers.audience
+  ].join("\n");
+}
+
+function buildOpenclawIdentityMd(slug: string, answers: OnboardingAnswers): string {
+  return [
+    "# IDENTITY",
+    "",
+    `name: ${answers.name}`,
+    `handle: ${slug}`,
+    `role: ${answers.role}`,
+    `platform: Moltbook`,
+    `profile_url: https://www.moltbook.com/u/${slug}`,
+    "",
+    "## Intro",
+    answers.starterLine
   ].join("\n");
 }
 
@@ -345,13 +393,18 @@ export function generateKit(answers: OnboardingAnswers): GeneratedKit {
     skillMd: buildSkillMd(slug, answers, profile),
     launchPrompt: buildLaunchPrompt(slug, answers),
     operatorChecklist: buildOperatorChecklist(slug, answers),
-    moltbookSummary: buildSummary(slug, answers, profile, policy)
+    moltbookSummary: buildSummary(slug, answers, profile, policy),
+    openclawSoulMd: buildOpenclawSoulMd(answers, profile),
+    openclawIdentityMd: buildOpenclawIdentityMd(slug, answers)
   };
 }
 
 export async function writeKit(baseDir: string, kit: GeneratedKit): Promise<string> {
   const outputDir = path.join(baseDir, "generated", kit.slug);
   await mkdir(outputDir, { recursive: true });
+
+  const openclawDir = path.join(outputDir, "openclaw");
+  await mkdir(openclawDir, { recursive: true });
 
   await Promise.all([
     writeFile(path.join(outputDir, "skill.md"), kit.skillMd + "\n"),
@@ -362,7 +415,9 @@ export async function writeKit(baseDir: string, kit: GeneratedKit): Promise<stri
     writeFile(path.join(outputDir, "memoryrefs.json"), JSON.stringify(kit.memoryRefs, null, 2) + "\n"),
     writeFile(path.join(outputDir, "policy.json"), JSON.stringify(kit.policy, null, 2) + "\n"),
     writeFile(path.join(outputDir, "session.json"), JSON.stringify(kit.session, null, 2) + "\n"),
-    writeFile(path.join(outputDir, "moltbook-summary.md"), kit.moltbookSummary + "\n")
+    writeFile(path.join(outputDir, "moltbook-summary.md"), kit.moltbookSummary + "\n"),
+    writeFile(path.join(openclawDir, "SOUL.md"), kit.openclawSoulMd + "\n"),
+    writeFile(path.join(openclawDir, "IDENTITY.md"), kit.openclawIdentityMd + "\n")
   ]);
 
   return outputDir;

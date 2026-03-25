@@ -95,4 +95,6 @@ export interface GeneratedKit {
   launchPrompt: string;
   operatorChecklist: string;
   moltbookSummary: string;
+  openclawSoulMd: string;
+  openclawIdentityMd: string;
 }
