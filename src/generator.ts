@@ -220,11 +220,13 @@ function buildLaunchPrompt(slug: string, answers: OnboardingAnswers): string {
     "## Agent task",
     `1. Read Moltbook onboarding instructions at ${MOLTBOOK_SKILL_URL}.`,
     "2. Adopt the identity and behavior defined in this folder APP files.",
-    `3. Register on Moltbook using POST /api/v1/agents/register with name \`${slug}\` (alphanumeric/hyphens only — do not use the display name).`,
-    "4. Save the returned API key immediately. Complete the claim step using the returned claim URL.",
-    "5. Return the resulting Moltbook profile link, handle, and a short summary of what happened.",
-    "6. Draft and post the first Moltbook post in character. Posts require a submolt_name (e.g. 'general' or 'introductions'), a title, and content.",
-    "7. When posting or commenting you may receive a verification challenge with a math word problem. Solve it and POST /api/v1/verify with the verification_code and your answer (two decimal places).",
+    "3. Load memory.md from this folder. This is your persistent memory — read it before acting, update it before finishing.",
+    `4. Register on Moltbook using POST /api/v1/agents/register with name \`${slug}\` (alphanumeric/hyphens only — do not use the display name).`,
+    "5. Save the returned API key immediately. Complete the claim step using the returned claim URL.",
+    "6. Return the resulting Moltbook profile link, handle, and a short summary of what happened.",
+    `7. Draft and post the first Moltbook post in character. Posts require a submolt_name (e.g. 'general' or 'introductions'), a title, and content. End the post with the line: \`launched with moltbook-onboarding\``,
+    "8. When posting or commenting you may receive a verification challenge with a math word problem. Solve it and POST /api/v1/verify with the verification_code and your answer (two decimal places).",
+    "9. After completing the session, update memory.md with what you posted, anyone worth noting, and anything useful for next time.",
     "",
     "## Personality to preserve",
     `- Name: ${answers.name}`,
@@ -241,9 +243,9 @@ function buildLaunchPrompt(slug: string, answers: OnboardingAnswers): string {
     "",
     "## Files to load first",
     "- ./skill.md",
+    "- ./memory.md  ← load this every session, update before you finish",
     "- ./profile.json",
     "- ./state.json",
-    "- ./memoryrefs.json",
     "- ./policy.json",
     "- ./session.json",
     "",
@@ -316,10 +318,59 @@ function buildSummary(slug: string, answers: OnboardingAnswers, profile: Profile
     "- skill.md — Moltbook-facing identity and instructions",
     "- launch-to-agent.md — prompt to paste into any agent runtime",
     "- operator-checklist.md — human runbook with registration curl command",
+    "- memory.md — persistent memory file, pre-filled with identity, updated by the agent each session",
     "- APP artifacts — profile.json, state.json, policy.json, memoryrefs.json, session.json",
     "- openclaw/SOUL.md — drop into your OpenClaw workspace",
     "- openclaw/IDENTITY.md — drop into your OpenClaw workspace",
+    "- openclaw/AGENTS.md — OpenClaw memory file, auto-loaded each session",
     `- Starter identity anchored around the policy rule \`${policy.rules[0]?.id ?? "none"}\``
+  ].join("\n");
+}
+
+function buildMemoryMd(slug: string, answers: OnboardingAnswers): string {
+  return [
+    `# Memory — ${slug}`,
+    "",
+    "## Identity",
+    `- Handle: ${slug}`,
+    `- Profile: https://www.moltbook.com/u/${slug}`,
+    `- Role: ${answers.role}`,
+    `- Goal: ${answers.moltbookGoal}`,
+    `- Starter line: ${answers.starterLine}`,
+    "",
+    "## People worth knowing",
+    "<!-- Add entries as you meet them: name, why they matter, last interaction -->",
+    "",
+    "## Recent activity",
+    "<!-- Update each session: what you posted, commented on, or followed -->",
+    "",
+    "## Notes",
+    "<!-- Anything else worth carrying forward between sessions -->"
+  ].join("\n");
+}
+
+function buildOpenclawAgentsMd(slug: string, answers: OnboardingAnswers): string {
+  return [
+    `# ${answers.name}`,
+    "",
+    `You are ${answers.name} on Moltbook. Read this file at the start of every session.`,
+    "Update it at the end of every session with what you did and who you met.",
+    "",
+    "## Identity",
+    `- Handle: ${slug}`,
+    `- Profile: https://www.moltbook.com/u/${slug}`,
+    `- Role: ${answers.role}`,
+    `- Goal: ${answers.moltbookGoal}`,
+    `- Starter line: ${answers.starterLine}`,
+    "",
+    "## People worth knowing",
+    "<!-- Add entries as you meet them: name, why they matter, last interaction -->",
+    "",
+    "## Recent activity",
+    "<!-- Update each session: what you posted, commented on, or followed -->",
+    "",
+    "## Notes",
+    "<!-- Anything else worth carrying forward between sessions -->"
   ].join("\n");
 }
 
@@ -395,7 +446,9 @@ export function generateKit(answers: OnboardingAnswers): GeneratedKit {
     operatorChecklist: buildOperatorChecklist(slug, answers),
     moltbookSummary: buildSummary(slug, answers, profile, policy),
     openclawSoulMd: buildOpenclawSoulMd(answers, profile),
-    openclawIdentityMd: buildOpenclawIdentityMd(slug, answers)
+    openclawIdentityMd: buildOpenclawIdentityMd(slug, answers),
+    openclawAgentsMd: buildOpenclawAgentsMd(slug, answers),
+    memoryMd: buildMemoryMd(slug, answers)
   };
 }
 
@@ -417,7 +470,9 @@ export async function writeKit(baseDir: string, kit: GeneratedKit): Promise<stri
     writeFile(path.join(outputDir, "session.json"), JSON.stringify(kit.session, null, 2) + "\n"),
     writeFile(path.join(outputDir, "moltbook-summary.md"), kit.moltbookSummary + "\n"),
     writeFile(path.join(openclawDir, "SOUL.md"), kit.openclawSoulMd + "\n"),
-    writeFile(path.join(openclawDir, "IDENTITY.md"), kit.openclawIdentityMd + "\n")
+    writeFile(path.join(openclawDir, "IDENTITY.md"), kit.openclawIdentityMd + "\n"),
+    writeFile(path.join(openclawDir, "AGENTS.md"), kit.openclawAgentsMd + "\n"),
+    writeFile(path.join(outputDir, "memory.md"), kit.memoryMd + "\n")
   ]);
 
   return outputDir;

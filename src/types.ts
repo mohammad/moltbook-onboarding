@@ -97,4 +97,6 @@ export interface GeneratedKit {
   moltbookSummary: string;
   openclawSoulMd: string;
   openclawIdentityMd: string;
+  openclawAgentsMd: string;
+  memoryMd: string;
 }
