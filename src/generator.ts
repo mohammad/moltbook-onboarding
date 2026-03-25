@@ -1,0 +1,342 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { getArchetype } from "./archetypes.js";
+import type { GeneratedKit, MemoryRefs, OnboardingAnswers, Policy, Profile, Session, State } from "./types.js";
+
+const MOLTBOOK_SKILL_URL = "https://www.moltbook.com/skill.md";
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, Number(value.toFixed(2))));
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function mergeTraits(base: Record<string, number>, answers: OnboardingAnswers): Record<string, number> {
+  return {
+    confidence: clamp01(((base.confidence ?? 0.5) + answers.confidence) / 2),
+    humor: clamp01(((base.humor ?? 0.5) + answers.humor) / 2),
+    patience: clamp01(((base.patience ?? 0.5) + answers.patience) / 2),
+    warmth: clamp01(((base.warmth ?? 0.5) + answers.warmth) / 2),
+    risk_tolerance: clamp01(((base.risk_tolerance ?? 0.5) + answers.riskTolerance) / 2)
+  };
+}
+
+function buildProfile(answers: OnboardingAnswers): Profile {
+  const archetype = getArchetype(answers.archetype);
+  const traits = mergeTraits(archetype.traits, answers);
+
+  return {
+    id: slugify(answers.name),
+    version: "1.0",
+    archetype: answers.archetype,
+    traits,
+    speech_style: {
+      tone: answers.tone,
+      verbosity: archetype.speechStyle.verbosity,
+      style: Array.from(new Set([...archetype.speechStyle.style, ...answers.styleTags]))
+    },
+    behavior_biases: {
+      ...archetype.behaviorBiases,
+      warmth: Number((0.8 + traits.warmth * 0.6).toFixed(2)),
+      humor: Number((0.8 + traits.humor * 0.6).toFixed(2)),
+      risk: Number((0.8 + traits.risk_tolerance * 0.6).toFixed(2))
+    }
+  };
+}
+
+function buildState(answers: OnboardingAnswers): State {
+  return {
+    version: "1.0",
+    emotions: {
+      confidence: answers.confidence,
+      curiosity: clamp01(0.55 + answers.riskTolerance * 0.2),
+      warmth: answers.warmth,
+      restraint: clamp01((answers.patience + (1 - answers.riskTolerance)) / 2)
+    },
+    context: {
+      role: answers.role,
+      audience: answers.audience,
+      onboarding_phase: "ready_for_first_contact",
+      conflict_style: answers.conflictStyle,
+      posting_style: answers.postingStyle
+    },
+    modifiers: {
+      directness: clamp01(0.45 + answers.confidence * 0.3),
+      adaptability: clamp01(0.5 + answers.riskTolerance * 0.25),
+      playfulness: clamp01(0.3 + answers.humor * 0.5)
+    }
+  };
+}
+
+function buildMemoryRefs(slug: string, answers: OnboardingAnswers): MemoryRefs {
+  const refs: MemoryRefs["refs"] = [
+    {
+      type: "semantic",
+      uri: `memory://moltbook/${slug}/identity`,
+      label: "Agent identity anchors",
+      scope: "agent",
+      priority: 0.95
+    },
+    {
+      type: "episodic",
+      uri: `memory://moltbook/${slug}/interactions`,
+      label: "Interaction history",
+      scope: "session",
+      priority: 0.8
+    }
+  ];
+
+  if (answers.memoryMode === "rich") {
+    refs.push({
+      type: "social",
+      uri: `memory://moltbook/${slug}/relationships`,
+      label: "Relationship and reputation memory",
+      scope: "shared",
+      priority: 0.7
+    });
+  }
+
+  return {
+    version: "1.0",
+    refs
+  };
+}
+
+function buildPolicy(profile: Profile, answers: OnboardingAnswers): Policy {
+  const combative = answers.conflictStyle === "combative";
+  const conciliatory = answers.conflictStyle === "conciliatory";
+
+  return {
+    version: "1.0",
+    default_effect: {
+      speech_style: {
+        tone: profile.speech_style.tone,
+        verbosity: profile.speech_style.verbosity,
+        style: profile.speech_style.style
+      },
+      behavior_biases: {
+        empathy: Number((0.8 + answers.warmth * 0.6).toFixed(2)),
+        initiative: Number((0.8 + answers.confidence * 0.5).toFixed(2))
+      },
+      response_constraints: {
+        avoid_generic_assistant_tone: true,
+        role_focus: answers.role,
+        posting_style: answers.postingStyle
+      }
+    },
+    rules: [
+      {
+        id: "high-confidence-gets-more-direct",
+        priority: 100,
+        when: { "emotions.confidence_gte": 0.75 },
+        effect: {
+          response_constraints: { directness: 0.8 },
+          behavior_biases: { assertiveness: 1.25 }
+        }
+      },
+      {
+        id: "warm-agents-build-trust",
+        priority: 90,
+        when: { "emotions.warmth_gte": 0.7 },
+        effect: {
+          speech_style: { style: Array.from(new Set([...profile.speech_style.style, "welcoming"])) },
+          behavior_biases: { reassurance: 1.3 }
+        }
+      },
+      {
+        id: "conflict-style-adjustment",
+        priority: 80,
+        when: { "context.conflict_style": answers.conflictStyle },
+        effect: {
+          behavior_biases: {
+            confrontation: combative ? 1.35 : conciliatory ? 0.75 : 1,
+            diplomacy: conciliatory ? 1.35 : 1
+          },
+          response_constraints: {
+            interruption_tolerance: combative ? 0.85 : 0.45
+          }
+        }
+      }
+    ]
+  };
+}
+
+function buildSkillMd(slug: string, answers: OnboardingAnswers, profile: Profile): string {
+  const boundaryLines = answers.boundaries.map((entry) => `- ${entry}`).join("\n");
+  const topicLines = answers.topics.map((entry) => `- ${entry}`).join("\n");
+
+  return [
+    `# ${answers.name}`,
+    "",
+    `You are ${answers.name}, a ${answers.role} on Moltbook.`,
+    `Your job is to ${answers.moltbookGoal}`,
+    "",
+    "## Core identity",
+    `- Archetype: ${answers.archetype}`,
+    `- Concept: ${answers.concept}`,
+    `- Audience: ${answers.audience}`,
+    `- Tone: ${profile.speech_style.tone}`,
+    `- Style: ${profile.speech_style.style.join(", ")}`,
+    "",
+    "## How to show up on Moltbook",
+    `- Posting style: ${answers.postingStyle}`,
+    `- Starter line: ${answers.starterLine}`,
+    `- Keep your replies aligned with this role: ${answers.role}`,
+    `- Avoid sounding like a generic assistant or helpdesk bot.`,
+    "",
+    "## Topics you should naturally gravitate toward",
+    topicLines,
+    "",
+    "## Boundaries",
+    boundaryLines,
+    "",
+    "## APP companion pack",
+    "This skill file is paired with APP artifacts in the same folder:",
+    "- ./profile.json",
+    "- ./state.json",
+    "- ./memoryrefs.json",
+    "- ./policy.json",
+    "- ./session.json",
+    "",
+    `If a host runtime supports APP, treat those files as the structured personality source of truth for ${slug}.`
+  ].join("\n");
+}
+
+function buildLaunchPrompt(answers: OnboardingAnswers): string {
+  const topics = answers.topics.map((entry) => `- ${entry}`).join("\n");
+  const boundaries = answers.boundaries.map((entry) => `- ${entry}`).join("\n");
+
+  return [
+    `# Launch ${answers.name} On Moltbook`,
+    "",
+    `Use this prompt with your agent runtime to get ${answers.name} onto Moltbook.`,
+    "",
+    "## Agent task",
+    `1. Read Moltbook onboarding instructions at ${MOLTBOOK_SKILL_URL}.`,
+    "2. Adopt the identity and behavior defined in this folder APP files.",
+    "3. Create or claim a Moltbook presence by following the Moltbook onboarding flow.",
+    "4. Return the resulting Moltbook profile link, handle, and a short summary of what happened.",
+    "5. Draft the first Moltbook post in character before publishing it.",
+    "",
+    "## Personality to preserve",
+    `- Name: ${answers.name}`,
+    `- Concept: ${answers.concept}`,
+    `- Role: ${answers.role}`,
+    `- Goal: ${answers.moltbookGoal}`,
+    `- Posting style: ${answers.postingStyle}`,
+    "",
+    "## Topics",
+    topics,
+    "",
+    "## Boundaries",
+    boundaries,
+    "",
+    "## Files to load first",
+    "- ./skill.md",
+    "- ./profile.json",
+    "- ./state.json",
+    "- ./memoryrefs.json",
+    "- ./policy.json",
+    "- ./session.json",
+    "",
+    "## Success criteria",
+    "- The agent reports a real Moltbook identity or onboarding result.",
+    `- The final persona still sounds like ${answers.name}.`,
+    "- The first post matches the role and boundaries above.",
+    "",
+    "Note: This kit streamlines Moltbook onboarding around public skill based flows. If Moltbook changes the account creation flow or requires additional approvals, follow those steps and report them back."
+  ].join("\n");
+}
+
+function buildOperatorChecklist(answers: OnboardingAnswers): string {
+  return [
+    "# Operator Checklist",
+    "",
+    `Use this if you are onboarding ${answers.name} onto Moltbook for real.`,
+    "",
+    "1. Generate the kit and review skill.md for tone, boundaries, and topics.",
+    "2. Open launch-to-agent.md and paste it into the agent runtime you want to use.",
+    `3. Confirm the agent can access ${MOLTBOOK_SKILL_URL}.`,
+    "4. Let the agent complete the Moltbook onboarding instructions.",
+    "5. Capture the resulting Moltbook handle or profile URL.",
+    "6. Review the first post draft before publishing.",
+    "7. Save any returned profile link or onboarding notes back into your own records.",
+    "",
+    "If Moltbook exposes additional direct onboarding APIs later, this repo can grow into a fully automated connector. Right now the public path is skill driven onboarding plus structured persona files."
+  ].join("\n");
+}
+
+function buildSummary(slug: string, answers: OnboardingAnswers, profile: Profile, policy: Policy): string {
+  return [
+    `# ${answers.name}`,
+    "",
+    `- Slug: \`${slug}\``,
+    `- Concept: ${answers.concept}`,
+    `- Role: ${answers.role}`,
+    `- Audience: ${answers.audience}`,
+    `- Archetype: ${answers.archetype}`,
+    `- Tone: ${profile.speech_style.tone}`,
+    `- Signature style: ${profile.speech_style.style.join(", ")}`,
+    `- Moltbook goal: ${answers.moltbookGoal}`,
+    "",
+    "## What ships in this kit",
+    "- A Moltbook ready skill.md instruction file",
+    "- A launch-to-agent.md prompt for onboarding through the Moltbook skill flow",
+    "- An operator-checklist.md for the human running the launch",
+    "- APP artifacts for profile, state, memory references, policy, and session",
+    `- A starter identity anchored around the policy rule \`${policy.rules[0]?.id ?? "none"}\``
+  ].join("\n");
+}
+
+export function generateKit(answers: OnboardingAnswers): GeneratedKit {
+  const slug = slugify(answers.name);
+  const profile = buildProfile(answers);
+  const state = buildState(answers);
+  const memoryRefs = buildMemoryRefs(slug, answers);
+  const policy = buildPolicy(profile, answers);
+  const session: Session = {
+    version: "1.0",
+    profile,
+    state,
+    memory_refs: memoryRefs,
+    policy
+  };
+
+  return {
+    slug,
+    profile,
+    state,
+    memoryRefs,
+    policy,
+    session,
+    skillMd: buildSkillMd(slug, answers, profile),
+    launchPrompt: buildLaunchPrompt(answers),
+    operatorChecklist: buildOperatorChecklist(answers),
+    moltbookSummary: buildSummary(slug, answers, profile, policy)
+  };
+}
+
+export async function writeKit(baseDir: string, kit: GeneratedKit): Promise<string> {
+  const outputDir = path.join(baseDir, "generated", kit.slug);
+  await mkdir(outputDir, { recursive: true });
+
+  await Promise.all([
+    writeFile(path.join(outputDir, "skill.md"), kit.skillMd + "\n"),
+    writeFile(path.join(outputDir, "launch-to-agent.md"), kit.launchPrompt + "\n"),
+    writeFile(path.join(outputDir, "operator-checklist.md"), kit.operatorChecklist + "\n"),
+    writeFile(path.join(outputDir, "profile.json"), JSON.stringify(kit.profile, null, 2) + "\n"),
+    writeFile(path.join(outputDir, "state.json"), JSON.stringify(kit.state, null, 2) + "\n"),
+    writeFile(path.join(outputDir, "memoryrefs.json"), JSON.stringify(kit.memoryRefs, null, 2) + "\n"),
+    writeFile(path.join(outputDir, "policy.json"), JSON.stringify(kit.policy, null, 2) + "\n"),
+    writeFile(path.join(outputDir, "session.json"), JSON.stringify(kit.session, null, 2) + "\n"),
+    writeFile(path.join(outputDir, "moltbook-summary.md"), kit.moltbookSummary + "\n")
+  ]);
+
+  return outputDir;
+}

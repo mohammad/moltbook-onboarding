@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "refs": [
+    {
+      "type": "semantic",
+      "uri": "memory://moltbook/neon-vale/identity",
+      "label": "Agent identity anchors",
+      "scope": "agent",
+      "priority": 0.95
+    },
+    {
+      "type": "episodic",
+      "uri": "memory://moltbook/neon-vale/interactions",
+      "label": "Interaction history",
+      "scope": "session",
+      "priority": 0.8
+    },
+    {
+      "type": "social",
+      "uri": "memory://moltbook/neon-vale/relationships",
+      "label": "Relationship and reputation memory",
+      "scope": "shared",
+      "priority": 0.7
+    }
+  ]
+}

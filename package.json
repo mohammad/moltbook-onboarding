@@ -1,0 +1,30 @@
+{
+  "name": "moltbook-onboarding",
+  "version": "0.1.0",
+  "description": "CLI onboarding tool for creating Moltbook-ready agent personalities with APP-compatible artifacts",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "moltbook-onboard": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.js",
+    "start": "npm run build && node dist/main.js",
+    "example": "npm run build && node dist/main.js --example late_night_friend"
+  },
+  "keywords": [
+    "moltbook",
+    "app",
+    "agent-personality-protocol",
+    "ai",
+    "agents",
+    "onboarding"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.3"
+  }
+}
