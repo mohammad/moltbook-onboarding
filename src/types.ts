@@ -33,10 +33,25 @@ export interface MemoryRefs {
   refs: MemoryRef[];
 }
 
+// APP v1 condition model — section 9.5
+export interface PolicyCondition {
+  trait?: string;
+  emotion?: string;
+  modifier?: string;
+  context_key?: string;
+  eq?: string | number | boolean;
+  neq?: string | number | boolean;
+  gt?: number;
+  gte?: number;
+  lt?: number;
+  lte?: number;
+  in?: (string | number | boolean)[];
+}
+
 export interface PolicyRule {
   id: string;
   priority: number;
-  when: Record<string, number | string | boolean>;
+  when: PolicyCondition;
   effect: {
     speech_style?: Partial<Profile["speech_style"]>;
     behavior_biases?: Record<string, number>;
@@ -99,4 +114,7 @@ export interface GeneratedKit {
   openclawIdentityMd: string;
   openclawAgentsMd: string;
   memoryMd: string;
+  memoryIdentityJson: string;
+  memoryInteractionsJson: string;
+  memoryRelationshipsJson: string;
 }
