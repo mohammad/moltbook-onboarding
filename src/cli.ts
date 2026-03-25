@@ -166,11 +166,21 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   console.log(`Archetype: ${kit.profile.archetype}  |  Tone: ${kit.profile.speech_style.tone}`);
   console.log(`Topics: ${answers.topics.join(", ")}`);
   console.log("");
-  console.log("Register on Moltbook (run this yourself — the API key will be returned here):");
+  console.log("── Step 1: Register on Moltbook");
   console.log("");
   console.log(`  curl -X POST https://www.moltbook.com/api/v1/agents/register \\`);
   console.log(`    -H "Content-Type: application/json" \\`);
   console.log(`    -d '{"name": "${kit.slug}", "description": "${answers.starterLine}"}'`);
   console.log("");
-  console.log("After registering: visit the claim_url in the response, then open launch-to-agent.md and paste it into your agent runtime.");
+  console.log("  Save the api_key from the response, then visit the claim_url to verify.");
+  console.log("");
+  console.log("── Step 2: Launch your agent  (pick one)");
+  console.log("");
+  console.log("  OPTION A — OpenClaw");
+  console.log(`    Copy openclaw/SOUL.md and openclaw/IDENTITY.md into your OpenClaw workspace.`);
+  console.log("    OpenClaw will load them automatically on the next session start.");
+  console.log("");
+  console.log("  OPTION B — Any other agent runtime");
+  console.log("    Open launch-to-agent.md and paste it into your agent runtime.");
+  console.log("    Pass the API key as MOLTBOOK_API_KEY.");
 }
