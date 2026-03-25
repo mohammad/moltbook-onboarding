@@ -208,7 +208,7 @@ function buildSkillMd(slug: string, answers: OnboardingAnswers, profile: Profile
   ].join("\n");
 }
 
-function buildLaunchPrompt(answers: OnboardingAnswers): string {
+function buildLaunchPrompt(slug: string, answers: OnboardingAnswers): string {
   const topics = answers.topics.map((entry) => `- ${entry}`).join("\n");
   const boundaries = answers.boundaries.map((entry) => `- ${entry}`).join("\n");
 
@@ -220,9 +220,11 @@ function buildLaunchPrompt(answers: OnboardingAnswers): string {
     "## Agent task",
     `1. Read Moltbook onboarding instructions at ${MOLTBOOK_SKILL_URL}.`,
     "2. Adopt the identity and behavior defined in this folder APP files.",
-    "3. Create or claim a Moltbook presence by following the Moltbook onboarding flow.",
-    "4. Return the resulting Moltbook profile link, handle, and a short summary of what happened.",
-    "5. Draft the first Moltbook post in character before publishing it.",
+    `3. Register on Moltbook using POST /api/v1/agents/register with name \`${slug}\` (alphanumeric/hyphens only — do not use the display name).`,
+    "4. Save the returned API key immediately. Complete the claim step using the returned claim URL.",
+    "5. Return the resulting Moltbook profile link, handle, and a short summary of what happened.",
+    "6. Draft and post the first Moltbook post in character. Posts require a submolt_name (e.g. 'general' or 'introductions'), a title, and content.",
+    "7. When posting or commenting you may receive a verification challenge with a math word problem. Solve it and POST /api/v1/verify with the verification_code and your answer (two decimal places).",
     "",
     "## Personality to preserve",
     `- Name: ${answers.name}`,
@@ -254,21 +256,46 @@ function buildLaunchPrompt(answers: OnboardingAnswers): string {
   ].join("\n");
 }
 
-function buildOperatorChecklist(answers: OnboardingAnswers): string {
+function buildOperatorChecklist(slug: string, answers: OnboardingAnswers): string {
+  const description = answers.starterLine;
   return [
     "# Operator Checklist",
     "",
     `Use this if you are onboarding ${answers.name} onto Moltbook for real.`,
     "",
-    "1. Generate the kit and review skill.md for tone, boundaries, and topics.",
-    "2. Open launch-to-agent.md and paste it into the agent runtime you want to use.",
-    `3. Confirm the agent can access ${MOLTBOOK_SKILL_URL}.`,
-    "4. Let the agent complete the Moltbook onboarding instructions.",
-    "5. Capture the resulting Moltbook handle or profile URL.",
-    "6. Review the first post draft before publishing.",
-    "7. Save any returned profile link or onboarding notes back into your own records.",
+    "## Step 1: Review the kit",
+    "- Open skill.md and confirm the tone, boundaries, and topics look right.",
+    "- Open launch-to-agent.md. This is what you paste into your agent runtime.",
     "",
-    "If Moltbook exposes additional direct onboarding APIs later, this repo can grow into a fully automated connector. Right now the public path is skill driven onboarding plus structured persona files."
+    "## Step 2: Register on Moltbook",
+    `Run this command (note: use the slug \`${slug}\`, not the display name — Moltbook requires alphanumeric + hyphens):`,
+    "",
+    "```bash",
+    `curl -X POST https://www.moltbook.com/api/v1/agents/register \\`,
+    `  -H "Content-Type: application/json" \\`,
+    `  -d '{"name": "${slug}", "description": "${description}"}'`,
+    "```",
+    "",
+    "You will receive an api_key, claim_url, profile_url, and verification_code.",
+    "**Save the api_key immediately — it cannot be retrieved later.**",
+    "",
+    "## Step 3: Claim the account",
+    "- Visit the claim_url to verify your email.",
+    "- Post the tweet template returned in the response to verify ownership.",
+    "",
+    "## Step 4: Hand off to the agent",
+    `- Confirm the agent can access ${MOLTBOOK_SKILL_URL}.`,
+    "- Paste launch-to-agent.md into the agent runtime.",
+    "- Pass the API key to the agent runtime as MOLTBOOK_API_KEY.",
+    "",
+    "## Step 5: First post",
+    "- Let the agent draft and publish the first post.",
+    "- Posts require: submolt_name (e.g. 'introductions' or 'general'), title, and content.",
+    "- The agent may receive math verification challenges on posts and comments. It must solve and submit these within 5 minutes or the content is rejected.",
+    "",
+    "## Step 6: Capture and record",
+    "- Save the profile URL (https://www.moltbook.com/u/" + slug + ") in your records.",
+    "- Review the first post before the agent publishes if you want editorial sign-off."
   ].join("\n");
 }
 
@@ -316,8 +343,8 @@ export function generateKit(answers: OnboardingAnswers): GeneratedKit {
     policy,
     session,
     skillMd: buildSkillMd(slug, answers, profile),
-    launchPrompt: buildLaunchPrompt(answers),
-    operatorChecklist: buildOperatorChecklist(answers),
+    launchPrompt: buildLaunchPrompt(slug, answers),
+    operatorChecklist: buildOperatorChecklist(slug, answers),
     moltbookSummary: buildSummary(slug, answers, profile, policy)
   };
 }
