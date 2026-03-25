@@ -1,9 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { validateSession } from "agent-personality-protocol";
 import { getArchetype } from "./archetypes.js";
-import type { GeneratedKit, MemoryRefs, OnboardingAnswers, Policy, Profile, Session, State } from "./types.js";
+import type { BuiltProfile, GeneratedKit, MemoryRefs, OnboardingAnswers, Policy, Profile, Session, State } from "./types.js";
 
 const MOLTBOOK_SKILL_URL = "https://www.moltbook.com/skill.md";
+
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, Number(value.toFixed(2))));
@@ -27,7 +29,7 @@ function mergeTraits(base: Record<string, number>, answers: OnboardingAnswers): 
   };
 }
 
-function buildProfile(answers: OnboardingAnswers): Profile {
+function buildProfile(answers: OnboardingAnswers): BuiltProfile {
   const archetype = getArchetype(answers.archetype);
   const traits = mergeTraits(archetype.traits, answers);
 
@@ -117,7 +119,7 @@ interface MemoryEntry {
   source_title: string;
 }
 
-function buildMemoryIdentityJson(slug: string, answers: OnboardingAnswers, profile: Profile): string {
+function buildMemoryIdentityJson(slug: string, answers: OnboardingAnswers, profile: BuiltProfile): string {
   const entries: MemoryEntry[] = [
     {
       id: `${slug}-handle`,
@@ -187,7 +189,7 @@ function buildMemoryRelationshipsJson(): string {
   return JSON.stringify([], null, 2);
 }
 
-function buildPolicy(profile: Profile, answers: OnboardingAnswers): Policy {
+function buildPolicy(profile: BuiltProfile, answers: OnboardingAnswers): Policy {
   const combative = answers.conflictStyle === "combative";
   const conciliatory = answers.conflictStyle === "conciliatory";
 
@@ -246,7 +248,7 @@ function buildPolicy(profile: Profile, answers: OnboardingAnswers): Policy {
   };
 }
 
-function buildSkillMd(slug: string, answers: OnboardingAnswers, profile: Profile): string {
+function buildSkillMd(slug: string, answers: OnboardingAnswers, profile: BuiltProfile): string {
   const boundaryLines = answers.boundaries.map((entry) => `- ${entry}`).join("\n");
   const topicLines = answers.topics.map((entry) => `- ${entry}`).join("\n");
 
@@ -385,7 +387,7 @@ function buildOperatorChecklist(slug: string, answers: OnboardingAnswers): strin
   ].join("\n");
 }
 
-function buildSummary(slug: string, answers: OnboardingAnswers, profile: Profile, policy: Policy): string {
+function buildSummary(slug: string, answers: OnboardingAnswers, profile: BuiltProfile, policy: Policy): string {
   return [
     `# ${answers.name}`,
     "",
@@ -469,7 +471,7 @@ function buildOpenclawAgentsMd(slug: string, answers: OnboardingAnswers): string
   ].join("\n");
 }
 
-function buildOpenclawSoulMd(answers: OnboardingAnswers, profile: Profile): string {
+function buildOpenclawSoulMd(answers: OnboardingAnswers, profile: BuiltProfile): string {
   const boundaryLines = answers.boundaries.map((entry) => `- ${entry}`).join("\n");
   const topicLines = answers.topics.map((entry) => `- ${entry}`).join("\n");
   const styleDesc = profile.speech_style.style.join(", ");
@@ -528,6 +530,12 @@ export function generateKit(answers: OnboardingAnswers): GeneratedKit {
     memory_refs: memoryRefs,
     policy
   };
+
+  const validation = validateSession(session);
+  if (!validation.ok) {
+    const issues = validation.issues.map((i) => `  ${i.path}: ${i.message}`).join("\n");
+    throw new Error(`Generated session failed APP v1 validation:\n${issues}`);
+  }
 
   return {
     slug,

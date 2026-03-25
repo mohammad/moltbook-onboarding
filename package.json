@@ -1,6 +1,6 @@
 {
   "name": "moltbook-onboarding",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI onboarding tool for creating Moltbook-ready agent personalities with APP-compatible artifacts",
   "license": "Apache-2.0",
   "type": "module",
@@ -26,5 +26,8 @@
   "devDependencies": {
     "@types/node": "^24.5.2",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "agent-personality-protocol": "^1.0.1"
   }
 }
